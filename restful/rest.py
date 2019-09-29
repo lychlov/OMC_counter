@@ -38,18 +38,19 @@ async def show_files(request, date, hour):
 
 @app.route('/download/<date>/<hour>')
 async def get_files(request, date, hour):
-    pattern = r'.*2019SYBZ-HW.*?-{}-{}.zip'.format(date, hour)
+    pattern = r'.*2019SYBZ-HW.*?-{}-{}.xlsx'.format(date, hour)
     source = r'/home/ops/omc_counter/omc_data/{}/{}/'.format(date, hour)
     html_str = ''
+    a = "<a href='/file/{}/{}/{}'>{}</a><br>"
     remote_dir = '/opt/PRS/server/var/prs/result_file/20191001BZ'
     if not os.path.exists(source):
         os.makedirs(source)
     for key, item in omcs.items():
-        ftp_a = SFTPAdapter(key, item['user'], item['password'])
-        files = ftp_a.get_all_files(remote_dir)
+        ftp_a = SFTPAdapter(item['ip'], item['user'], item['password'])
+        files = ftp_a.get_all_files(item['path'])
         for file_name in files:
             if re.match(pattern, file_name):
-                html_str += file_name + '<br>'
+                html_str += a.format(date, hour, file_name.split('/')[-1], file_name.split('/')[-1])
                 ftp_a.sftp_get(file_name, source + file_name.split('/')[-1])
                 print(source + file_name.split('/')[-1])
     return html(html_str)
@@ -57,18 +58,28 @@ async def get_files(request, date, hour):
 
 @app.route('/result/<date>/<hour>')
 async def get_result(request, date, hour):
+    print('all_data start')
     source = r'/home/ops/omc_counter/omc_data/{}/{}/'.format(date, hour)
-    all_data = pd.concat([pd.read_excel(source + path,
-                                        usecols=[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
-                          for path in os.listdir(source)])
+    all_data = []
+    for path in os.listdir(source):
+        result_dict = {}
+        temp_data = pd.read_excel(source + path, header=1, usecols=[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
+        temp_data.replace("NIL", 0, inplace=True)
+        for col in list(temp_data.columns.values):
+            result_dict[col] = temp_data[col].sum()
+        result_df = pd.DataFrame(result_dict, pd.Index(range(1)))
+        all_data.append(result_df)
+    print(len(all_data))
+    all_sum = pd.concat(all_data)
     target = r'/home/ops/omc_counter/omc_target/'
     if not os.path.exists(target):
         os.makedirs(target)
-    all_data.to_excel(target + "{}-{}-all_data.xlsx".format(date, hour))
-    result_dict = {'id': 0}
-    for col in list(all_data.columns.values):
-        result_dict[col] = all_data[col].sum()
-        print(col, all_data[col].sum())
+    all_sum.to_excel(target + "{}-{}-all_data.xlsx".format(date, hour))
+    print('all_data done')
+    result_dict = {}
+    for col in list(all_sum.columns.values):
+        result_dict[col] = all_sum[col].sum()
+        print(col, all_sum[col].sum())
     result_df = pd.DataFrame(result_dict, pd.Index(range(1)))
     result_df.to_excel(target + "{}-{}-result.xlsx".format(date, hour))
     html_str = '<p>{}</p><br>' \
