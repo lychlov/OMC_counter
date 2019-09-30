@@ -9,6 +9,14 @@ import pandas as pd
 app = Sanic()
 
 
+def sum_df(df):
+    result_dict = {}
+    for col in list(df.columns.values):
+        result_dict[col] = df[col].sum()
+    result_df = pd.DataFrame(result_dict, pd.Index(range(1)))
+    return result_df
+
+
 @app.route("/")
 async def test(request):
     return json({"hello": "world"})
@@ -62,15 +70,11 @@ async def get_result(request, date, hour):
     source = r'/home/ops/omc_counter/omc_data/{}/{}/'.format(date, hour)
     all_data = []
     for path in os.listdir(source):
-        result_dict = {}
         temp_data = pd.read_excel(source + path, header=1, usecols=[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
         temp_data.replace("NIL", 0, inplace=True)
-        for col in list(temp_data.columns.values):
-            result_dict[col] = temp_data[col].sum()
-        result_df = pd.DataFrame(result_dict, pd.Index(range(1)))
-        all_data.append(result_df)
-    print(len(all_data))
-    all_sum = pd.concat(all_data)
+        all_data.append(temp_data)
+    all_data_map = map(sum_df, all_data)
+    all_sum = pd.concat(all_data_map)
     target = r'/home/ops/omc_counter/omc_target/'
     if not os.path.exists(target):
         os.makedirs(target)
